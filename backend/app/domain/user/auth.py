@@ -1,17 +1,24 @@
-"""User model and auth utilities."""
+"""User model and authentication utilities."""
 import hashlib
-import os
+import hmac
 import uuid
 from datetime import datetime, timedelta
+
 import jwt
+from passlib.context import CryptContext
 from sqlalchemy import String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
+
 from app.infrastructure.persistence.models import Base
 from app.config import settings
 
 SECRET_KEY = settings.jwt_secret
 ALGORITHM = settings.jwt_algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
+
+# New passwords use Argon2id. Existing salted SHA-256 hashes remain readable so
+# users can be migrated transparently on their next successful login.
+_password_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class User(Base):
@@ -27,15 +34,40 @@ class User(Base):
 
 
 def hash_password(password: str) -> str:
-    # ponytail: salted SHA-256, upgrade to argon2 in production
-    salt = os.urandom(32).hex()
-    h = hashlib.sha256((salt + password).encode()).hexdigest()
-    return f"{salt}${h}"
+    """Hash a password with Argon2id via Passlib."""
+    return _password_context.hash(password)
+
+
+def _verify_legacy_sha256(plain: str, hashed: str) -> bool:
+    """Verify the repository's legacy ``salt$sha256`` password format."""
+    try:
+        salt, expected = hashed.split("$", 1)
+    except ValueError:
+        return False
+    if not salt or len(expected) != 64:
+        return False
+    actual = hashlib.sha256((salt + plain).encode()).hexdigest()
+    return hmac.compare_digest(actual, expected)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    salt, h = hashed.split("$", 1)
-    return hashlib.sha256((salt + plain).encode()).hexdigest() == h
+    """Verify Argon2id hashes and legacy SHA-256 hashes during migration."""
+    if hashed.startswith("$argon2"):
+        try:
+            return _password_context.verify(plain, hashed)
+        except (ValueError, TypeError):
+            return False
+    return _verify_legacy_sha256(plain, hashed)
+
+
+def password_needs_rehash(hashed: str) -> bool:
+    """Return True when a stored password should be upgraded after login."""
+    if not hashed.startswith("$argon2"):
+        return True
+    try:
+        return _password_context.needs_update(hashed)
+    except (ValueError, TypeError):
+        return True
 
 
 def create_access_token(user_id: str, username: str) -> str:

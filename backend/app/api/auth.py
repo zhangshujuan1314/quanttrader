@@ -4,9 +4,15 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.infrastructure.persistence.database import get_session
 from app.domain.user.auth import (
-    User, hash_password, verify_password, create_access_token, decode_access_token,
+    User,
+    hash_password,
+    password_needs_rehash,
+    verify_password,
+    create_access_token,
+    decode_access_token,
 )
 
 router = APIRouter(tags=["auth"])
@@ -36,7 +42,8 @@ async def register(req: RegisterRequest, session: AsyncSession = Depends(get_ses
     if existing.scalar_one_or_none():
         raise HTTPException(400, "用户名已存在")
     user = User(
-        username=req.username, email=req.email,
+        username=req.username,
+        email=req.email,
         hashed_password=hash_password(req.password),
     )
     session.add(user)
@@ -54,6 +61,12 @@ async def login(req: LoginRequest, session: AsyncSession = Depends(get_session))
         raise HTTPException(401, "用户名或密码错误")
     if not user.is_active:
         raise HTTPException(403, "账户已禁用")
+
+    # Transparently upgrade legacy salted SHA-256 hashes after a successful login.
+    if password_needs_rehash(user.hashed_password):
+        user.hashed_password = hash_password(req.password)
+        await session.commit()
+
     token = create_access_token(str(user.id), user.username)
     return TokenResponse(access_token=token, user_id=str(user.id), username=user.username)
 
@@ -77,7 +90,9 @@ async def get_current_user(
 @router.get("/me")
 async def get_me(user: User = Depends(get_current_user)):
     return {
-        "id": str(user.id), "username": user.username,
-        "email": user.email, "is_active": user.is_active,
+        "id": str(user.id),
+        "username": user.username,
+        "email": user.email,
+        "is_active": user.is_active,
         "created_at": str(user.created_at),
     }
