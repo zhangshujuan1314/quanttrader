@@ -8,10 +8,10 @@ def _legacy_hash(password: str, salt: str = "0123456789abcdef" * 4) -> str:
     return f"{salt}${digest}"
 
 
-def test_new_passwords_use_bcrypt_and_verify():
+def test_new_passwords_use_argon2id_and_verify():
     hashed = hash_password("correct horse battery staple")
 
-    assert hashed.startswith(("$2a$", "$2b$", "$2y$"))
+    assert hashed.startswith("$argon2id$")
     assert verify_password("correct horse battery staple", hashed)
     assert not verify_password("wrong password", hashed)
     assert not password_needs_rehash(hashed)
