@@ -23,4 +23,4 @@ jobs:
       - name: Install backend dependencies
         run: poetry install --no-root --no-interaction
       - name: Run tests
-        run: poetry run pytest -q
+        run: PYTHONPATH=. poetry run pytest -q
