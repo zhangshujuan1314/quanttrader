@@ -10,6 +10,7 @@ services:
       - QT_REDIS_URL=redis://redis:6379
       - QT_DEBUG=false
       - QT_JWT_SECRET=${QT_JWT_SECRET:?Set QT_JWT_SECRET to a strong random value before starting Docker Compose}
+      - QT_ALLOW_UNSAFE_STRATEGY_EXEC=false
     depends_on:
       db:
         condition: service_healthy

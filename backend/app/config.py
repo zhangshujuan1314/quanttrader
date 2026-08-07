@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 1 week
 
+    # Strategy execution
+    # Custom Python strategies are arbitrary code. Keep remote execution disabled
+    # unless an operator explicitly accepts that risk in a trusted environment.
+    allow_unsafe_strategy_exec: bool = False
+
     model_config = {"env_prefix": "QT_", "env_file": ".env"}
 
     @model_validator(mode="after")
