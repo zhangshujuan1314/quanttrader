@@ -1,4 +1,8 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+
+DEFAULT_DEV_JWT_SECRET = "quanttrader-dev-secret-change-in-production"
 
 
 class Settings(BaseSettings):
@@ -19,11 +23,21 @@ class Settings(BaseSettings):
     single_stop_loss_pct: float = -0.08
 
     # Auth
-    jwt_secret: str = "quanttrader-dev-secret-change-in-production"
+    jwt_secret: str = DEFAULT_DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24 * 7  # 1 week
 
     model_config = {"env_prefix": "QT_", "env_file": ".env"}
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        """Fail closed when production-like mode uses a known/weak JWT secret."""
+        if not self.debug:
+            if self.jwt_secret == DEFAULT_DEV_JWT_SECRET or len(self.jwt_secret) < 32:
+                raise ValueError(
+                    "QT_JWT_SECRET must be set to a strong value of at least 32 characters when QT_DEBUG=false"
+                )
+        return self
 
 
 settings = Settings()
