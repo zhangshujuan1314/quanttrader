@@ -8,7 +8,7 @@ import pandas as pd
 
 from app.infrastructure.persistence.database import get_session
 from app.infrastructure.persistence.models import Strategy, BacktestResult, MarketDaily
-from app.domain.strategy.engine import run_backtest, run_optimization, BacktestConfig
+from app.domain.strategy.safe_engine import run_backtest, run_optimization, BacktestConfig
 from app.domain.backtest.monte_carlo import run_monte_carlo, run_stress_test
 from app.config import settings
 
@@ -18,7 +18,7 @@ router = APIRouter(tags=["backtest"])
 
 class BacktestRequest(BaseModel):
     strategy_id: str | None = None
-    strategy_code: str | None = None       # direct code (for quick test)
+    strategy_code: str | None = None       # direct code (trusted-only unless unsafe execution is explicitly enabled)
     strategy_params: dict = {}
     ts_code: str                           # e.g. "000001.SZ"
     start_date: str                        # "2022-01-01"
@@ -79,6 +79,8 @@ async def run_backtest_endpoint(req: BacktestRequest,
     )
     try:
         output = run_backtest(code, df, config, req.strategy_params)
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
     except TimeoutError as e:
         raise HTTPException(408, str(e))
     except Exception as e:
@@ -195,7 +197,10 @@ async def optimize_strategy(req: OptimizeRequest,
     } for r in rows])
 
     config = BacktestConfig(initial_cash=req.initial_cash)
-    opt = run_optimization(code, df, req.param_grid, req.optimize_metric, config)
+    try:
+        opt = run_optimization(code, df, req.param_grid, req.optimize_metric, config)
+    except PermissionError as e:
+        raise HTTPException(403, str(e))
 
     return {
         "best_params": opt.best_params,
