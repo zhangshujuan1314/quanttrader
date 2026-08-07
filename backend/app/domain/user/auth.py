@@ -16,9 +16,9 @@ SECRET_KEY = settings.jwt_secret
 ALGORITHM = settings.jwt_algorithm
 ACCESS_TOKEN_EXPIRE_MINUTES = settings.access_token_expire_minutes
 
-# New passwords use a deliberately slow password KDF. Existing salted SHA-256
-# hashes remain readable so users can be migrated transparently on next login.
-_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# New passwords use Argon2id. Existing salted SHA-256 hashes remain readable so
+# users can be migrated transparently on their next successful login.
+_password_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class User(Base):
@@ -34,7 +34,7 @@ class User(Base):
 
 
 def hash_password(password: str) -> str:
-    """Hash a password using bcrypt via Passlib."""
+    """Hash a password with Argon2id via Passlib."""
     return _password_context.hash(password)
 
 
@@ -51,8 +51,8 @@ def _verify_legacy_sha256(plain: str, hashed: str) -> bool:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    """Verify bcrypt hashes and legacy SHA-256 hashes during migration."""
-    if hashed.startswith(("$2a$", "$2b$", "$2y$")):
+    """Verify Argon2id hashes and legacy SHA-256 hashes during migration."""
+    if hashed.startswith("$argon2"):
         try:
             return _password_context.verify(plain, hashed)
         except (ValueError, TypeError):
@@ -62,7 +62,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def password_needs_rehash(hashed: str) -> bool:
     """Return True when a stored password should be upgraded after login."""
-    if not hashed.startswith(("$2a$", "$2b$", "$2y$")):
+    if not hashed.startswith("$argon2"):
         return True
     try:
         return _password_context.needs_update(hashed)
